@@ -4,13 +4,13 @@
   import PauseIcon from "@lucide/svelte/icons/pause";
   import PlayIcon from "@lucide/svelte/icons/play";
   import TargetIcon from "@lucide/svelte/icons/target";
-  import XIcon from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { FocusTimer } from "#lib/timer/focus-timer.svelte.js";
   import { formatClock } from "#lib/timer/format.js";
   import type { SessionSet } from "#lib/timer/model.js";
   import { cn } from "#lib/utils.js";
+  import DiscardSessionDialog from "./discard-session-dialog.svelte";
   import SessionProgress from "./session-progress.svelte";
 
   interface Props {
@@ -30,6 +30,7 @@
   );
 
   const actionButtonClass = "h-12 min-w-36 px-5 text-base short:h-10";
+  const cornerButtonClass = "text-muted-foreground";
 
   let pauseButton = $state<HTMLElement | null>(null);
 
@@ -42,14 +43,25 @@
   <div
     class="absolute top-3 right-3 sm:top-6 sm:right-6 short:top-2 short:right-2"
   >
-    <Button
-      variant="ghost"
-      class="text-muted-foreground hover:text-destructive dark:hover:text-destructive"
-      onclick={() => timer.discard()}
-    >
-      <XIcon />
-      세션 폐기
-    </Button>
+    <!-- 집중 중에는 세션을 버릴 수 있고, 휴식 중에는 세트를 마칠 수 있다. -->
+    {#if isFocus}
+      <DiscardSessionDialog
+        class={cn(
+          cornerButtonClass,
+          "hover:text-destructive dark:hover:text-destructive",
+        )}
+        onConfirm={() => timer.discard()}
+      />
+    {:else}
+      <Button
+        variant="ghost"
+        class={cornerButtonClass}
+        onclick={() => timer.complete()}
+      >
+        <CheckIcon />
+        세션 완료
+      </Button>
+    {/if}
   </div>
 
   <section
@@ -134,18 +146,6 @@
           집중 시작
         {/if}
       </Button>
-
-      {#if !isFocus}
-        <Button
-          variant="secondary"
-          size="lg"
-          class={actionButtonClass}
-          onclick={() => timer.complete()}
-        >
-          <CheckIcon />
-          세션 완료
-        </Button>
-      {/if}
     </div>
   </section>
 
