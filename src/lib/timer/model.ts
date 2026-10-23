@@ -54,8 +54,8 @@ export const DURATION_LIMITS: Record<
   SessionKind,
   { min: number; max: number }
 > = {
-  focus: { min: 1, max: 180 },
-  break: { min: 1, max: 60 },
+  focus: { min: 5, max: 300 },
+  break: { min: 1, max: 120 },
 };
 
 export const DEFAULT_SETTINGS: TimerSettings = {
