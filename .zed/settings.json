@@ -1,0 +1,33 @@
+// Folder-specific settings
+//
+// For a full list of overridable settings, and general information on folder-specific settings,
+// see the documentation: https://zed.dev/docs/configuring-zed#settings-files
+{
+  "languages": {
+    "JavaScript": {
+      "tab_size": 2,
+    },
+    "Svelte": {
+      "tab_size": 2,
+    },
+    "TypeScript": {
+      "tab_size": 2,
+    },
+    "CSS": {
+      "language_servers": ["tailwindcss-language-server"],
+      "tab_size": 2,
+    },
+    "HTML": {
+      "tab_size": 2,
+    },
+    "JSON": {
+      "tab_size": 2,
+    },
+    "JSONC": {
+      "tab_size": 2,
+    },
+    "YAML": {
+      "tab_size": 2,
+    },
+  },
+}
