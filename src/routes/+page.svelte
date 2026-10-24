@@ -30,7 +30,7 @@
 </svelte:head>
 
 {#if timer.active}
-  <SessionView {timer} session={timer.active} autofocus={mounted} />
+  <SessionView {timer} active={timer.active} autofocus={mounted} />
 {:else}
   <IdleView {timer} autofocus={mounted} />
 {/if}

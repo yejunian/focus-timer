@@ -6,15 +6,15 @@ import {
   clampMinutes,
   createInitialState,
   GOAL_MAX_LENGTH,
+  type ActivePlan,
   type PauseRecord,
+  type SessionPlan,
   type SessionRecord,
-  type SessionSet,
-  type TimerSettings,
   type TimerState,
 } from "./model.js";
 
 export const STORAGE_KEY = "focus-timer:state";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 interface StoredState extends TimerState {
   version: typeof STORAGE_VERSION;
@@ -47,40 +47,46 @@ export function parseState(raw: string | null): TimerState {
     return createInitialState();
   }
 
-  if (!isRecord(value) || value.version !== STORAGE_VERSION) {
-    return createInitialState();
-  }
+  if (!isRecord(value)) return createInitialState();
+  if (value.version === 1) return parseVersion1(value);
+  if (value.version !== STORAGE_VERSION) return createInitialState();
 
-  const settings = parseSettings(value.settings);
-  if (!settings) return createInitialState();
+  const plan = parseSessions(value.plan);
+  if (!plan) return createInitialState();
 
-  const active = value.active === null ? null : parseSessionSet(value.active);
-  // 진행 중인 세트가 깨져 있으면 세트만 버리고 입력값은 살린다.
-  return { settings, active };
+  const active = value.active === null ? null : parseActivePlan(value.active);
+  // 진행 중인 계획이 깨져 있으면 그것만 버리고 대기 화면의 계획은 살린다.
+  return { plan, active };
 }
 
-function parseSettings(value: unknown): TimerSettings | null {
-  if (
-    !isRecord(value) ||
-    typeof value.goal !== "string" ||
-    !isFiniteNumber(value.focusMinutes) ||
-    !isFiniteNumber(value.breakMinutes)
-  ) {
-    return null;
+/**
+ * 세션을 하나만 계획할 수 있던 버전 1의 값을 바꾼다.
+ * `{ settings: { goal, focusMinutes, breakMinutes }, active: { goal, focusMinutes, breakMinutes, finished, current } }`
+ */
+function parseVersion1(value: Record<string, unknown>): TimerState {
+  const plan = parseSessions([value.settings]);
+  if (!plan) return createInitialState();
+
+  let active: ActivePlan | null = null;
+  if (isRecord(value.active)) {
+    const { goal, focusMinutes, breakMinutes, finished, current } =
+      value.active;
+    active = parseActivePlan({
+      sessions: [{ goal, focusMinutes, breakMinutes }],
+      index: 0,
+      finished,
+      current,
+    });
   }
-  return {
-    goal: value.goal.slice(0, GOAL_MAX_LENGTH),
-    focusMinutes: clampMinutes("focus", value.focusMinutes),
-    breakMinutes: clampMinutes("break", value.breakMinutes),
-  };
+  return { plan, active };
 }
 
-function parseSessionSet(value: unknown): SessionSet | null {
+function parseActivePlan(value: unknown): ActivePlan | null {
+  if (!isRecord(value)) return null;
+  const sessions = parseSessions(value.sessions);
   if (
-    !isRecord(value) ||
-    typeof value.goal !== "string" ||
-    !isFiniteNumber(value.focusMinutes) ||
-    !isFiniteNumber(value.breakMinutes) ||
+    !sessions ||
+    !isIndex(value.index, sessions.length) ||
     !Array.isArray(value.finished) ||
     !value.finished.every(isFinishedSession) ||
     !isSession(value.current) ||
@@ -89,12 +95,41 @@ function parseSessionSet(value: unknown): SessionSet | null {
     return null;
   }
   return {
-    goal: value.goal.slice(0, GOAL_MAX_LENGTH),
-    focusMinutes: clampMinutes("focus", value.focusMinutes),
-    breakMinutes: clampMinutes("break", value.breakMinutes),
+    sessions,
+    index: value.index,
     finished: value.finished,
     current: value.current,
   };
+}
+
+/** 세션 계획 목록. 비어 있거나 하나라도 깨져 있으면 null */
+function parseSessions(value: unknown): SessionPlan[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+
+  const sessions: SessionPlan[] = [];
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      typeof item.goal !== "string" ||
+      !isFiniteNumber(item.focusMinutes) ||
+      !isFiniteNumber(item.breakMinutes)
+    ) {
+      return null;
+    }
+    sessions.push({
+      id: isId(item.id) ? item.id : 0,
+      goal: item.goal.slice(0, GOAL_MAX_LENGTH),
+      focusMinutes: clampMinutes("focus", item.focusMinutes),
+      breakMinutes: clampMinutes("break", item.breakMinutes),
+    });
+  }
+
+  // 번호가 없거나 겹치면 처음부터 다시 매긴다.
+  const ids = new Set(sessions.map((session) => session.id));
+  if (ids.has(0) || ids.size !== sessions.length) {
+    return sessions.map((session, index) => ({ ...session, id: index + 1 }));
+  }
+  return sessions;
 }
 
 function isFinishedSession(value: unknown): value is SessionRecord {
@@ -135,6 +170,18 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isNullableNumber(value: unknown): value is number | null {
   return value === null || isFiniteNumber(value);
+}
+
+function isId(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+function isIndex(value: unknown, length: number): value is number {
+  return (
+    Number.isSafeInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) < length
+  );
 }
 
 /** localStorage에 접근할 수 없는 환경(서버, 차단된 브라우저)이면 null */

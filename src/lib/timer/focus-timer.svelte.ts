@@ -1,18 +1,23 @@
 import { untrack } from "svelte";
 import {
-  completeSet,
-  discardSet,
+  completePlan,
+  discardPlan,
   getElapsedMs,
   getPlannedMs,
   getStatus,
+  insertPlannedSession,
   isPaused,
+  movePlannedSession,
   pause,
+  removePlannedSession,
   resume,
-  startSet,
+  startPlan,
   switchSession,
-  updateSettings,
-  type SessionSet,
-  type TimerSettings,
+  updateNextSession,
+  updatePlannedSession,
+  type ActivePlan,
+  type SessionPlan,
+  type SessionPlanPatch,
   type TimerState,
   type TimerStatus,
 } from "./model.js";
@@ -44,13 +49,13 @@ export class FocusTimer {
     return getStatus(this.#state);
   }
 
-  /** 대기 화면의 입력값 */
-  get settings(): TimerSettings {
-    return this.#state.settings;
+  /** 대기 화면에서 계획한 세션 목록 */
+  get plan(): SessionPlan[] {
+    return this.#state.plan;
   }
 
-  /** 진행 중인 집중-휴식 세트. 대기 상태면 null */
-  get active(): SessionSet | null {
+  /** 진행 중인 계획. 대기 상태면 null */
+  get active(): ActivePlan | null {
     return this.#state.active;
   }
 
@@ -59,22 +64,40 @@ export class FocusTimer {
     return session ? isPaused(session) : false;
   }
 
-  /** 현재 세션에서 일시정지한 시간을 뺀 진행 시간 */
+  /** 현재 집중/휴식 세션에서 일시정지한 시간을 뺀 진행 시간 */
   get elapsedMs(): number {
     return this.#elapsedMs;
   }
 
-  /** 현재 세션에 설정된 시간 */
+  /** 현재 집중/휴식 세션에 설정된 시간 */
   get plannedMs(): number {
     return this.#state.active ? getPlannedMs(this.#state.active) : 0;
   }
 
-  updateSettings(patch: Partial<TimerSettings>): void {
-    this.#commit(updateSettings(this.#state, patch));
+  /** `index` 자리에 새 세션을 계획한다. (0이면 맨 앞, 세션 수와 같으면 맨 뒤) */
+  addSession(index: number): void {
+    this.#commit(insertPlannedSession(this.#state, index));
+  }
+
+  removeSession(id: number): void {
+    this.#commit(removePlannedSession(this.#state, id));
+  }
+
+  moveSession(id: number, to: number): void {
+    this.#commit(movePlannedSession(this.#state, id, to));
+  }
+
+  updateSession(id: number, patch: SessionPlanPatch): void {
+    this.#commit(updatePlannedSession(this.#state, id, patch));
+  }
+
+  /** 휴식 중에 다음 세션의 목표와 시간을 고친다. */
+  updateNextSession(patch: SessionPlanPatch): void {
+    this.#commit(updateNextSession(this.#state, patch));
   }
 
   start(): void {
-    this.#transition(startSet);
+    this.#transition(startPlan);
   }
 
   togglePause(): void {
@@ -85,16 +108,17 @@ export class FocusTimer {
     this.#transition((state, now) => switchSession(state, "break", now));
   }
 
+  /** 휴식을 마치고 다음 세션의 집중을 시작한다. */
   startFocus(): void {
     this.#transition((state, now) => switchSession(state, "focus", now));
   }
 
   complete(): void {
-    this.#transition(completeSet);
+    this.#transition(completePlan);
   }
 
   discard(): void {
-    this.#transition(discardSet);
+    this.#transition(discardPlan);
   }
 
   /**
