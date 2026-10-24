@@ -2,11 +2,8 @@
   import PlayIcon from "@lucide/svelte/icons/play";
   import { onMount } from "svelte";
   import { Button } from "#lib/components/ui/button/index.js";
-  import * as Field from "#lib/components/ui/field/index.js";
-  import { Input } from "#lib/components/ui/input/index.js";
   import type { FocusTimer } from "#lib/timer/focus-timer.svelte.js";
-  import { DURATION_LIMITS, GOAL_MAX_LENGTH } from "#lib/timer/model.js";
-  import DurationField from "./duration-field.svelte";
+  import PlanList from "./plan-list.svelte";
 
   interface Props {
     timer: FocusTimer;
@@ -17,6 +14,19 @@
   let { timer, autofocus = false }: Props = $props();
 
   let startButton = $state<HTMLElement | null>(null);
+
+  /** 세션이 여러 개일 때 보여 줄 전체 계획 요약 */
+  const summary = $derived.by(() => {
+    const { plan } = timer;
+    if (plan.length < 2) return null;
+    let focusMinutes = 0;
+    let breakMinutes = 0;
+    for (const session of plan) {
+      focusMinutes += session.focusMinutes;
+      breakMinutes += session.breakMinutes;
+    }
+    return `세션 ${plan.length}개 · 집중 ${focusMinutes}분 · 휴식 ${breakMinutes}분`;
+  });
 
   onMount(() => {
     if (autofocus) startButton?.focus();
@@ -32,7 +42,7 @@
   class="flex min-h-dvh items-center justify-center px-6 py-10 short:items-start short:py-6"
 >
   <form
-    class="flex w-full max-w-md flex-col gap-8 short:gap-5"
+    class="flex w-full max-w-md flex-col gap-6 short:gap-4"
     onsubmit={handleSubmit}
   >
     <header class="flex flex-col gap-2 text-center">
@@ -42,55 +52,23 @@
       </p>
     </header>
 
-    <Field.Group>
-      <Field.Field>
-        <Field.Label for="goal">집중 목표</Field.Label>
-        <Input
-          id="goal"
-          class="h-11 text-base"
-          placeholder="무엇에 집중할까요?"
-          maxlength={GOAL_MAX_LENGTH}
-          autocomplete="off"
-          enterkeyhint="go"
-          bind:value={
-            () => timer.settings.goal,
-            (goal) => timer.updateSettings({ goal: goal ?? "" })
-          }
-        />
-      </Field.Field>
+    <PlanList {timer} />
 
-      <div class="grid grid-cols-2 gap-3 sm:gap-4">
-        <DurationField
-          id="focus-minutes"
-          label="집중 시간"
-          value={timer.settings.focusMinutes}
-          min={DURATION_LIMITS.focus.min}
-          max={DURATION_LIMITS.focus.max}
-          step={5}
-          onValueChange={(focusMinutes) =>
-            timer.updateSettings({ focusMinutes })}
-        />
-        <DurationField
-          id="break-minutes"
-          label="휴식 시간"
-          value={timer.settings.breakMinutes}
-          min={DURATION_LIMITS.break.min}
-          max={DURATION_LIMITS.break.max}
-          step={1}
-          onValueChange={(breakMinutes) =>
-            timer.updateSettings({ breakMinutes })}
-        />
-      </div>
-    </Field.Group>
-
-    <Button
-      type="submit"
-      size="lg"
-      class="h-12 w-full text-base"
-      bind:ref={startButton}
-    >
-      <PlayIcon />
-      집중 시작
-    </Button>
+    <div class="flex flex-col gap-3">
+      {#if summary}
+        <p class="text-center text-sm text-muted-foreground tabular-nums">
+          {summary}
+        </p>
+      {/if}
+      <Button
+        type="submit"
+        size="lg"
+        class="h-12 w-full text-base"
+        bind:ref={startButton}
+      >
+        <PlayIcon />
+        집중 시작
+      </Button>
+    </div>
   </form>
 </main>
