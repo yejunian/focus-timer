@@ -49,8 +49,12 @@
     onValueChange(next);
   }
 
+  const atMin = $derived(value <= min);
+  const atMax = $derived(value >= max);
+
   // step 단위로 맞춰 움직인다. (5분 단위일 때 23 → 25, 23 → 20)
   function stepBy(direction: 1 | -1) {
+    if (direction > 0 ? atMax : atMin) return;
     const snapped =
       direction > 0
         ? Math.floor(value / step) * step + step
@@ -59,6 +63,8 @@
   }
 </script>
 
+<!-- 범위 끝에 닿은 -/+ 버튼은 disabled 대신 aria-disabled로 표시한다.
+     흐리게 보이지 않고, 누르고 있던 버튼의 초점도 풀리지 않는다. 눌러도 값은 그대로다. -->
 <Field.Field>
   <Field.Label for={id}>
     <span
@@ -70,7 +76,7 @@
       <InputGroup.Button
         size="icon-sm"
         aria-label="{label} {step}분 줄이기"
-        disabled={value <= min}
+        aria-disabled={atMin || undefined}
         onclick={() => stepBy(-1)}
       >
         <MinusIcon />
@@ -93,7 +99,7 @@
       <InputGroup.Button
         size="icon-sm"
         aria-label="{label} {step}분 늘리기"
-        disabled={value >= max}
+        aria-disabled={atMax || undefined}
         onclick={() => stepBy(1)}
       >
         <PlusIcon />
