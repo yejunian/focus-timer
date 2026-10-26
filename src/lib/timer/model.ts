@@ -86,6 +86,14 @@ export function clampMinutes(kind: SessionKind, minutes: number): number {
   return Math.min(max, Math.max(min, Math.round(minutes)));
 }
 
+/**
+ * 집중 시간에 맞춘 기본 휴식 시간. 집중 시간의 1/5을 5분 단위로 반올림한다. (25분 → 5분, 50분 → 10분)
+ * 휴식 시간 범위를 벗어나면 범위 안으로 맞춘다. (10분 → 0분이므로 1분)
+ */
+export function getDefaultBreakMinutes(focusMinutes: number): number {
+  return clampMinutes("break", Math.round(focusMinutes / 5 / 5) * 5);
+}
+
 export function getStatus(state: TimerState): TimerStatus {
   return state.active?.current.kind ?? "idle";
 }
@@ -256,7 +264,9 @@ export function startPlan(state: TimerState, now: number): TimerState {
   };
 }
 
+/** 집중 세션만 일시정지할 수 있다. */
 export function pause(state: TimerState, now: number): TimerState {
+  if (state.active?.current.kind !== "focus") return state;
   return updateCurrent(state, (session) =>
     isPaused(session)
       ? session
@@ -267,6 +277,7 @@ export function pause(state: TimerState, now: number): TimerState {
   );
 }
 
+/** 휴식 세션도 재개할 수 있다. 이전 버전에서 일시정지한 채로 저장된 휴식이 있을 수 있다. */
 export function resume(state: TimerState, now: number): TimerState {
   return updateCurrent(state, (session) => closePause(session, now));
 }
