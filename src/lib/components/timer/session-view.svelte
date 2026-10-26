@@ -21,7 +21,7 @@
   interface Props {
     timer: FocusTimer;
     active: ActivePlan;
-    /** 처음 그려질 때 일시정지 버튼에 초점을 줄지 */
+    /** 처음 그려질 때 일시정지 버튼(휴식이면 주요 버튼)에 초점을 줄지 */
     autofocus?: boolean;
   }
 
@@ -36,6 +36,14 @@
   const plannedMinutes = $derived(
     isFocus ? session.focusMinutes : session.breakMinutes,
   );
+  // 휴식은 일시정지할 수 없다. 이전 버전에서 일시정지한 채로 저장된 휴식만 재개 버튼을 보여 준다.
+  const canTogglePause = $derived(isFocus || timer.paused);
+
+  function handlePauseAction() {
+    timer.togglePause();
+    // 휴식을 재개하면 버튼이 사라지므로 초점을 옆 버튼으로 옮긴다.
+    if (!isFocus) mainButton?.focus();
+  }
 
   function handleMainAction() {
     if (isFocus) timer.startBreak();
@@ -47,9 +55,10 @@
   const cornerButtonClass = "text-muted-foreground";
 
   let pauseButton = $state<HTMLElement | null>(null);
+  let mainButton = $state<HTMLElement | null>(null);
 
   onMount(() => {
-    if (autofocus) pauseButton?.focus();
+    if (autofocus) (pauseButton ?? mainButton)?.focus();
   });
 </script>
 
@@ -155,23 +164,30 @@
       </div>
 
       <div class="flex flex-wrap items-center justify-center gap-3">
+        {#if canTogglePause}
+          <Button
+            variant="outline"
+            size="lg"
+            class={actionButtonClass}
+            bind:ref={pauseButton}
+            onclick={handlePauseAction}
+          >
+            {#if timer.paused}
+              <PlayIcon />
+              재개
+            {:else}
+              <PauseIcon />
+              일시정지
+            {/if}
+          </Button>
+        {/if}
+
         <Button
-          variant="outline"
           size="lg"
           class={actionButtonClass}
-          bind:ref={pauseButton}
-          onclick={() => timer.togglePause()}
+          bind:ref={mainButton}
+          onclick={handleMainAction}
         >
-          {#if timer.paused}
-            <PlayIcon />
-            재개
-          {:else}
-            <PauseIcon />
-            일시정지
-          {/if}
-        </Button>
-
-        <Button size="lg" class={actionButtonClass} onclick={handleMainAction}>
           {#if isFocus}
             <CoffeeIcon />
             휴식 시작

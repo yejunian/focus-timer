@@ -264,7 +264,9 @@ export function startPlan(state: TimerState, now: number): TimerState {
   };
 }
 
+/** 집중 세션만 일시정지할 수 있다. */
 export function pause(state: TimerState, now: number): TimerState {
+  if (state.active?.current.kind !== "focus") return state;
   return updateCurrent(state, (session) =>
     isPaused(session)
       ? session
@@ -275,6 +277,7 @@ export function pause(state: TimerState, now: number): TimerState {
   );
 }
 
+/** 휴식 세션도 재개할 수 있다. 이전 버전에서 일시정지한 채로 저장된 휴식이 있을 수 있다. */
 export function resume(state: TimerState, now: number): TimerState {
   return updateCurrent(state, (session) => closePause(session, now));
 }
