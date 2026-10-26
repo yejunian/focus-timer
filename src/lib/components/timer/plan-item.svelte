@@ -3,14 +3,10 @@
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Field from "#lib/components/ui/field/index.js";
-  import {
-    DURATION_LIMITS,
-    type SessionPlan,
-    type SessionPlanPatch,
-  } from "#lib/timer/model.js";
+  import type { SessionPlan, SessionPlanPatch } from "#lib/timer/model.js";
   import { cn } from "#lib/utils.js";
-  import DurationField from "./duration-field.svelte";
   import GoalField from "./goal-field.svelte";
+  import SessionDurationFields from "./session-duration-fields.svelte";
 
   interface Props {
     session: SessionPlan;
@@ -90,23 +86,10 @@
       onValueChange={(goal) => onChange({ goal })}
     />
     <div class="grid grid-cols-2 gap-3 sm:gap-4">
-      <DurationField
-        id="session-{session.id}-focus-minutes"
-        label="집중 시간"
-        value={session.focusMinutes}
-        min={DURATION_LIMITS.focus.min}
-        max={DURATION_LIMITS.focus.max}
-        step={5}
-        onValueChange={(focusMinutes) => onChange({ focusMinutes })}
-      />
-      <DurationField
-        id="session-{session.id}-break-minutes"
-        label="휴식 시간"
-        value={session.breakMinutes}
-        min={DURATION_LIMITS.break.min}
-        max={DURATION_LIMITS.break.max}
-        step={1}
-        onValueChange={(breakMinutes) => onChange({ breakMinutes })}
+      <SessionDurationFields
+        idPrefix="session-{session.id}"
+        {session}
+        {onChange}
       />
     </div>
   </Field.Group>

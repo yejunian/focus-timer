@@ -4,7 +4,6 @@
   import type { FocusTimer } from "#lib/timer/focus-timer.svelte.js";
   import { formatClock, formatSpokenDuration } from "#lib/timer/format.js";
   import {
-    DURATION_LIMITS,
     getCurrentSession,
     getElapsedMs,
     getLastFocusRecord,
@@ -12,8 +11,8 @@
     type ActivePlan,
   } from "#lib/timer/model.js";
   import { cn } from "#lib/utils.js";
-  import DurationField from "./duration-field.svelte";
   import GoalField from "./goal-field.svelte";
+  import SessionDurationFields from "./session-duration-fields.svelte";
 
   interface Props {
     timer: FocusTimer;
@@ -97,25 +96,10 @@
             onValueChange={(goal) => timer.updateNextSession({ goal })}
           />
         </div>
-        <DurationField
-          id="next-session-focus-minutes"
-          label="집중 시간"
-          value={next.focusMinutes}
-          min={DURATION_LIMITS.focus.min}
-          max={DURATION_LIMITS.focus.max}
-          step={5}
-          onValueChange={(focusMinutes) =>
-            timer.updateNextSession({ focusMinutes })}
-        />
-        <DurationField
-          id="next-session-break-minutes"
-          label="휴식 시간"
-          value={next.breakMinutes}
-          min={DURATION_LIMITS.break.min}
-          max={DURATION_LIMITS.break.max}
-          step={1}
-          onValueChange={(breakMinutes) =>
-            timer.updateNextSession({ breakMinutes })}
+        <SessionDurationFields
+          idPrefix="next-session"
+          session={next}
+          onChange={(patch) => timer.updateNextSession(patch)}
         />
       </div>
     </section>
