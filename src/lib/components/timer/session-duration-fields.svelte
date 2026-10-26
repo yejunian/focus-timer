@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     DURATION_LIMITS,
+    getDefaultBreakMinutes,
     type SessionPlan,
     type SessionPlanPatch,
   } from "#lib/timer/model.js";
@@ -34,5 +35,6 @@
   min={DURATION_LIMITS.break.min}
   max={DURATION_LIMITS.break.max}
   step={1}
+  defaultValue={getDefaultBreakMinutes(session.focusMinutes)}
   onValueChange={(breakMinutes) => onChange({ breakMinutes })}
 />

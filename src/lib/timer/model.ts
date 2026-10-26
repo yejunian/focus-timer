@@ -86,6 +86,14 @@ export function clampMinutes(kind: SessionKind, minutes: number): number {
   return Math.min(max, Math.max(min, Math.round(minutes)));
 }
 
+/**
+ * 집중 시간에 맞춘 기본 휴식 시간. 집중 시간의 1/5을 5분 단위로 반올림한다. (25분 → 5분, 50분 → 10분)
+ * 휴식 시간 범위를 벗어나면 범위 안으로 맞춘다. (10분 → 0분이므로 1분)
+ */
+export function getDefaultBreakMinutes(focusMinutes: number): number {
+  return clampMinutes("break", Math.round(focusMinutes / 5 / 5) * 5);
+}
+
 export function getStatus(state: TimerState): TimerStatus {
   return state.active?.current.kind ?? "idle";
 }
