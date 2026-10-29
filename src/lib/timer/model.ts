@@ -2,6 +2,15 @@
 // 모든 함수는 순수 함수이며 원본을 바꾸지 않고 새 객체를 돌려준다.
 // 시간은 모두 Unix epoch 밀리초(Date.now())로 기록한다. 그래야 브라우저를 다시 열어도
 // 저장된 시각만으로 경과 시간을 다시 계산할 수 있다.
+// 지금 시각과 새 세션의 id처럼 바깥에서 정하는 값은 인자로 받는다.
+
+import {
+  createBreakEntry,
+  createFocusEntry,
+  isConcentration,
+  type FocusReview,
+  type HistoryEntry,
+} from "./history.js";
 
 export type SessionKind = "focus" | "break";
 
@@ -16,11 +25,18 @@ export interface PauseRecord {
 
 /** 실제로 진행한 집중 세션 또는 휴식 세션 하나의 기록 */
 export interface SessionRecord {
+  /** 세션을 시작할 때 매기는 고유한 id. 끝난 뒤 이력에도 같은 id로 남는다. */
+  id: string;
   kind: SessionKind;
   startedAt: number;
   /** 아직 진행 중이면 null */
   endedAt: number | null;
   pauses: PauseRecord[];
+}
+
+/** 끝난 세션의 기록. 일시정지도 모두 닫혀 있다. */
+export interface EndedSessionRecord extends SessionRecord {
+  endedAt: number;
 }
 
 /** 계획한 세션 하나. 세션은 집중 세션과 그 뒤의 휴식 세션 한 쌍으로 이루어진다. */
@@ -45,7 +61,7 @@ export interface ActivePlan {
   /** 지금 진행 중인 세션의 위치 (`sessions`의 인덱스) */
   index: number;
   /** 이미 끝난 집중/휴식 세션 기록 (시간순) */
-  finished: SessionRecord[];
+  finished: EndedSessionRecord[];
   current: SessionRecord;
 }
 
@@ -54,6 +70,20 @@ export interface TimerState {
   plan: SessionPlan[];
   /** null이면 대기 상태 */
   active: ActivePlan | null;
+}
+
+/** 집중/휴식 세션을 끝내는 전이의 결과 */
+export interface Transition {
+  state: TimerState;
+  /** 이 전이로 끝나 이력에 남길 세션. 전이할 수 없으면 null */
+  entry: HistoryEntry | null;
+}
+
+/** 집중 세션을 끝내는 데 필요한 값 */
+export interface FocusEnding {
+  /** 끝낼 집중 세션의 id. 그사이 다른 탭에서 세션이 바뀌었으면 끝내지 않는다. */
+  sessionId: string;
+  review: FocusReview;
 }
 
 export const GOAL_MAX_LENGTH = 100;
@@ -138,12 +168,18 @@ export function getPlannedMs(active: ActivePlan): number {
 }
 
 /** 가장 최근에 끝난 집중 세션의 기록. 휴식 중이면 바로 앞의 집중 세션이다. */
-export function getLastFocusRecord(active: ActivePlan): SessionRecord | null {
+export function getLastFocusRecord(
+  active: ActivePlan,
+): EndedSessionRecord | null {
   return active.finished.findLast((record) => record.kind === "focus") ?? null;
 }
 
-function createSession(kind: SessionKind, now: number): SessionRecord {
-  return { kind, startedAt: now, endedAt: null, pauses: [] };
+function createSession(
+  kind: SessionKind,
+  now: number,
+  id: string,
+): SessionRecord {
+  return { id, kind, startedAt: now, endedAt: null, pauses: [] };
 }
 
 function closePause(session: SessionRecord, now: number): SessionRecord {
@@ -153,8 +189,13 @@ function closePause(session: SessionRecord, now: number): SessionRecord {
   return { ...session, pauses };
 }
 
-function endSession(session: SessionRecord, now: number): SessionRecord {
+/** 세션을 끝낸다. 열린 일시정지는 같은 시각에 닫는다. */
+function endSession(session: SessionRecord, now: number): EndedSessionRecord {
   return { ...closePause(session, now), endedAt: now };
+}
+
+function unchanged(state: TimerState): Transition {
+  return { state, entry: null };
 }
 
 function updateCurrent(
@@ -251,7 +292,11 @@ export function movePlannedSession(
 // ---------- 계획 진행 ----------
 
 /** 대기 → 첫 세션의 집중 */
-export function startPlan(state: TimerState, now: number): TimerState {
+export function startPlan(
+  state: TimerState,
+  now: number,
+  focusId: string,
+): TimerState {
   if (state.active) return state;
   return {
     ...state,
@@ -259,7 +304,7 @@ export function startPlan(state: TimerState, now: number): TimerState {
       sessions: state.plan.map(normalizeSession),
       index: 0,
       finished: [],
-      current: createSession("focus", now),
+      current: createSession("focus", now, focusId),
     },
   };
 }
@@ -277,42 +322,70 @@ export function pause(state: TimerState, now: number): TimerState {
   );
 }
 
-/** 휴식 세션도 재개할 수 있다. 이전 버전에서 일시정지한 채로 저장된 휴식이 있을 수 있다. */
 export function resume(state: TimerState, now: number): TimerState {
   return updateCurrent(state, (session) => closePause(session, now));
 }
 
 /**
- * 현재 집중/휴식 세션을 끝내고 다른 종류의 세션을 시작한다. 열린 일시정지는 닫는다.
- * - 집중 → 같은 세션의 휴식
- * - 휴식 → 다음 세션의 집중. 마지막 세션이면 할 수 없다.
+ * 집중을 끝내고 같은 세션의 휴식을 시작한다. 끝낸 집중은 돌아본 내용과 함께 이력에 남긴다.
+ * 돌아본 내용을 입력하는 시간도 집중에 넣으므로, 저장한 때(`now`)에 집중을 끝내고 바로 휴식을 시작한다.
  */
-export function switchSession(
+export function finishFocus(
   state: TimerState,
-  next: SessionKind,
+  ending: FocusEnding,
   now: number,
-): TimerState {
+  breakId: string,
+): Transition {
   const { active } = state;
-  if (!active || active.current.kind === next) return state;
-
-  let { sessions, index } = active;
-  if (next === "focus") {
-    if (isLastSession(active)) return state;
-    index += 1;
-    // 휴식 중에 고친 목표와 시간을 이제 다듬는다.
-    sessions = sessions.map((session, i) =>
-      i === index ? normalizeSession(session) : session,
-    );
+  if (
+    active?.current.kind !== "focus" ||
+    active.current.id !== ending.sessionId ||
+    !isConcentration(ending.review.concentration)
+  ) {
+    return unchanged(state);
   }
 
+  const ended = endSession(active.current, now);
   return {
-    ...state,
-    active: {
-      sessions,
-      index,
-      finished: [...active.finished, endSession(active.current, now)],
-      current: createSession(next, now),
+    state: {
+      ...state,
+      active: {
+        ...active,
+        finished: [...active.finished, ended],
+        current: createSession("break", now, breakId),
+      },
     },
+    entry: createFocusEntry(getCurrentSession(active), ended, ending.review),
+  };
+}
+
+/** 휴식을 끝내고 다음 세션의 집중을 시작한다. 끝낸 휴식은 이력에 남긴다. 마지막 세션이면 할 수 없다. */
+export function startNextFocus(
+  state: TimerState,
+  now: number,
+  focusId: string,
+): Transition {
+  const { active } = state;
+  if (active?.current.kind !== "break" || isLastSession(active)) {
+    return unchanged(state);
+  }
+
+  const ended = endSession(active.current, now);
+  const index = active.index + 1;
+  return {
+    state: {
+      ...state,
+      active: {
+        // 휴식 중에 고친 목표와 시간을 이제 다듬는다.
+        sessions: active.sessions.map((session, i) =>
+          i === index ? normalizeSession(session) : session,
+        ),
+        index,
+        finished: [...active.finished, ended],
+        current: createSession("focus", now, focusId),
+      },
+    },
+    entry: createBreakEntry(getCurrentSession(active), ended),
   };
 }
 
@@ -332,17 +405,26 @@ export function updateNextSession(
   return { ...state, active: { ...active, sessions } };
 }
 
-/**
- * 휴식 중에 계획을 마친다. (휴식 → 대기)
- * 마지막 세션이 아니면 남은 세션은 진행하지 않는다.
- * 완료한 계획을 어딘가에 남기는 기능은 아직 없으므로 지금은 대기 상태로 돌아가기만 한다.
- */
-export function completePlan(state: TimerState): TimerState {
-  if (state.active?.current.kind !== "break") return state;
-  return { ...state, active: null };
+/** 마지막 세션의 휴식을 끝내고 계획을 마친다. (휴식 → 대기) 끝낸 휴식은 이력에 남긴다. */
+export function completePlan(state: TimerState, now: number): Transition {
+  const { active } = state;
+  if (active?.current.kind !== "break" || !isLastSession(active)) {
+    return unchanged(state);
+  }
+  return {
+    state: { ...state, active: null },
+    entry: createBreakEntry(
+      getCurrentSession(active),
+      endSession(active.current, now),
+    ),
+  };
 }
 
-/** 진행 중인 계획을 버린다. (집중/휴식 → 대기) */
-export function discardPlan(state: TimerState): TimerState {
+/**
+ * 진행 중인 계획을 그만둔다. (집중/휴식 → 대기)
+ * 진행 중이던 집중/휴식은 이력에 남기지 않는다. 이미 끝낸 세션의 이력은 그대로 남는다.
+ */
+export function quitPlan(state: TimerState): TimerState {
+  if (!state.active) return state;
   return { ...state, active: null };
 }

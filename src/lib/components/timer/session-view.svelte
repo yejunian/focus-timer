@@ -8,14 +8,18 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import type { FocusTimer } from "#lib/timer/focus-timer.svelte.js";
   import { formatClock } from "#lib/timer/format.js";
+  import type { FocusReview } from "#lib/timer/history.js";
   import {
     getCurrentSession,
+    getElapsedMs,
+    getLastFocusRecord,
     isLastSession,
     type ActivePlan,
   } from "#lib/timer/model.js";
   import { cn } from "#lib/utils.js";
   import BreakOverview from "./break-overview.svelte";
-  import DiscardSessionDialog from "./discard-session-dialog.svelte";
+  import FinishFocusDialog from "./finish-focus-dialog.svelte";
+  import QuitSessionDialog from "./quit-session-dialog.svelte";
   import SessionProgress from "./session-progress.svelte";
 
   interface Props {
@@ -36,23 +40,41 @@
   const plannedMinutes = $derived(
     isFocus ? session.focusMinutes : session.breakMinutes,
   );
-  // 휴식은 일시정지할 수 없다. 이전 버전에서 일시정지한 채로 저장된 휴식만 재개 버튼을 보여 준다.
-  const canTogglePause = $derived(isFocus || timer.paused);
 
-  function handlePauseAction() {
-    timer.togglePause();
-    // 휴식을 재개하면 버튼이 사라지므로 초점을 옆 버튼으로 옮긴다.
-    if (!isFocus) mainButton?.focus();
+  // 마무리 창을 연 집중 세션의 id. 집중 세션마다 창을 새로 만드는 key로 쓰므로, 창을 닫아도 지우지 않는다.
+  let finishingId = $state<string | null>(null);
+  let finishing = $state(false);
+  // 다른 탭에서 이 집중을 먼저 끝내거나 그만두면 창을 닫는다.
+  const finishDialogOpen = $derived(
+    finishing && finishingId === active.current.id,
+  );
+  // 저장하기 전까지는 집중이 이어지므로 창에서도 진행 시간이 흐른다.
+  // 저장한 뒤 창이 닫히는 동안에는 방금 끝낸 집중의 시간을 보여 준다.
+  const finishingElapsedMs = $derived.by(() => {
+    if (isFocus) return timer.elapsedMs;
+    const record = getLastFocusRecord(active);
+    return record ? getElapsedMs(record, record.endedAt) : 0;
+  });
+
+  function openFinishDialog() {
+    finishingId = active.current.id;
+    finishing = true;
+  }
+
+  // 창이 닫히면 bits-ui가 초점을 연 버튼으로 되돌린다. 그 버튼이 이제 "집중 시작"(또는 "세션 완료")이 된다.
+  function finishFocus(review: FocusReview) {
+    if (finishingId === null) return;
+    finishing = false;
+    timer.finishFocus({ sessionId: finishingId, review });
   }
 
   function handleMainAction() {
-    if (isFocus) timer.startBreak();
+    if (isFocus) openFinishDialog();
     else if (isLast) timer.complete();
     else timer.startFocus();
   }
 
   const actionButtonClass = "h-12 min-w-36 px-5 text-base short:h-10";
-  const cornerButtonClass = "text-muted-foreground";
 
   let pauseButton = $state<HTMLElement | null>(null);
   let mainButton = $state<HTMLElement | null>(null);
@@ -66,25 +88,15 @@
   <div
     class="absolute top-3 right-3 sm:top-6 sm:right-6 short:top-2 short:right-2"
   >
-    <!-- 집중 중에는 계획을 버릴 수 있고, 휴식 중에는 남은 세션을 건너뛰고 마칠 수 있다.
-         마지막 휴식에서는 가운데의 "세션 완료" 버튼과 겹치므로 표시하지 않는다. -->
-    {#if isFocus}
-      <DiscardSessionDialog
-        class={cn(
-          cornerButtonClass,
-          "hover:text-destructive dark:hover:text-destructive",
-        )}
-        onConfirm={() => timer.discard()}
+    <!-- 집중과 휴식 중에 계획을 그만둘 수 있다.
+         마지막 휴식에서는 가운데의 "세션 완료" 버튼으로 마치므로 표시하지 않는다. -->
+    {#if isFocus || !isLast}
+      <QuitSessionDialog
+        class="text-muted-foreground hover:text-destructive dark:hover:text-destructive"
+        kind={active.current.kind}
+        hasFinished={active.finished.length > 0}
+        onConfirm={() => timer.quit()}
       />
-    {:else if !isLast}
-      <Button
-        variant="ghost"
-        class={cornerButtonClass}
-        onclick={() => timer.complete()}
-      >
-        <CheckIcon />
-        세션 완료
-      </Button>
     {/if}
   </div>
 
@@ -164,13 +176,14 @@
       </div>
 
       <div class="flex flex-wrap items-center justify-center gap-3">
-        {#if canTogglePause}
+        <!-- 휴식은 일시정지할 수 없다. -->
+        {#if isFocus}
           <Button
             variant="outline"
             size="lg"
             class={actionButtonClass}
             bind:ref={pauseButton}
-            onclick={handlePauseAction}
+            onclick={() => timer.togglePause()}
           >
             {#if timer.paused}
               <PlayIcon />
@@ -215,3 +228,17 @@
     />
   </div>
 </main>
+
+<!-- 집중 세션마다 새로 만들어, 앞 세션에서 입력하던 내용이 남지 않게 한다.
+     휴식 중에도 같은 세션이므로 목표와 집중 시간은 그대로다. -->
+{#if finishingId}
+  {#key finishingId}
+    <FinishFocusDialog
+      bind:open={() => finishDialogOpen, (open) => (finishing = open)}
+      goal={session.goal}
+      elapsedMs={finishingElapsedMs}
+      plannedMinutes={session.focusMinutes}
+      onSubmit={finishFocus}
+    />
+  {/key}
+{/if}

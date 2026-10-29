@@ -2,11 +2,12 @@
   import { onMount } from "svelte";
   import IdleView from "#lib/components/timer/idle-view.svelte";
   import SessionView from "#lib/components/timer/session-view.svelte";
-  import { FocusTimer } from "#lib/timer/focus-timer.svelte.js";
   import { formatClock } from "#lib/timer/format.js";
-  import { getBrowserStorage } from "#lib/timer/storage.js";
+  import type { PageProps } from "./$types";
 
-  const timer = new FocusTimer(getBrowserStorage());
+  let { data }: PageProps = $props();
+
+  const timer = $derived(data.timer);
 
   $effect(() => timer.connect());
 
