@@ -1,83 +1,72 @@
-// 타이머 상태를 localStorage에 저장하고 불러온다.
-// 저장된 값은 사용자가 고칠 수도 있고 이전 버전이 남긴 값일 수도 있으므로,
+// 타이머 상태를 IndexedDB에 저장하고 불러온다.
+// 저장된 값은 이전 버전이 남긴 값일 수도 있고 개발자 도구로 고친 값일 수도 있으므로,
 // 불러올 때 모양을 검사하고 맞지 않으면 초기 상태로 되돌린다.
 
+import {
+  HISTORY_STORE,
+  notifyChange,
+  requestResult,
+  STATE_STORE,
+  transactionDone,
+} from "./database.js";
+import type { HistoryEntry } from "./history.js";
 import {
   clampMinutes,
   createInitialState,
   GOAL_MAX_LENGTH,
   type ActivePlan,
+  type EndedSessionRecord,
   type PauseRecord,
   type SessionPlan,
   type SessionRecord,
   type TimerState,
 } from "./model.js";
 
-export const STORAGE_KEY = "focus-timer:state";
-const STORAGE_VERSION = 2;
+/** state 저장소에서 타이머 상태를 두는 키 */
+const TIMER_STATE_KEY = "timer";
 
-interface StoredState extends TimerState {
-  version: typeof STORAGE_VERSION;
+/** 저장된 타이머 상태를 읽는다. 저장된 값이 없으면 초기 상태다. 읽지 못하면 거부한다. */
+export async function readTimerState(db: IDBDatabase): Promise<TimerState> {
+  const transaction = db.transaction(STATE_STORE, "readonly");
+  const value = await requestResult(
+    transaction.objectStore(STATE_STORE).get(TIMER_STATE_KEY),
+  );
+  return parseState(value);
 }
 
-export function loadState(storage: Storage | null): TimerState {
+/**
+ * 타이머 상태를 저장하고 다른 탭에 알린다. `entry`가 있으면 같은 트랜잭션에서 이력에 더한다.
+ * 같은 세션의 이력이 이미 있으면(다른 탭에서 먼저 끝낸 경우) ConstraintError로 거부하고, 상태도 저장하지 않는다.
+ */
+export async function writeTimerState(
+  db: IDBDatabase,
+  state: TimerState,
+  entry: HistoryEntry | null,
+): Promise<void> {
+  const stores = entry ? [STATE_STORE, HISTORY_STORE] : [STATE_STORE];
+  const transaction = db.transaction(stores, "readwrite");
+  const done = transactionDone(transaction);
   try {
-    return parseState(storage?.getItem(STORAGE_KEY) ?? null);
-  } catch {
-    return createInitialState();
+    transaction.objectStore(STATE_STORE).put(state, TIMER_STATE_KEY);
+    if (entry) transaction.objectStore(HISTORY_STORE).add(entry);
+  } catch (error) {
+    // 값을 복제하지 못하는 등 요청을 넣지 못하면, 상태와 이력 중 하나만 저장되지 않도록 모두 취소한다.
+    done.catch(() => {});
+    transaction.abort();
+    throw error;
   }
+  await done;
+  notifyChange();
 }
 
-export function saveState(storage: Storage | null, state: TimerState): void {
-  const stored: StoredState = { version: STORAGE_VERSION, ...state };
-  try {
-    storage?.setItem(STORAGE_KEY, JSON.stringify(stored));
-  } catch {
-    // 저장 공간이 없거나 막혀 있으면 이번 탭 안에서만 상태를 유지한다.
-  }
-}
-
-export function parseState(raw: string | null): TimerState {
-  if (raw === null) return createInitialState();
-
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    return createInitialState();
-  }
-
+export function parseState(value: unknown): TimerState {
   if (!isRecord(value)) return createInitialState();
-  if (value.version === 1) return parseVersion1(value);
-  if (value.version !== STORAGE_VERSION) return createInitialState();
 
   const plan = parseSessions(value.plan);
   if (!plan) return createInitialState();
 
   const active = value.active === null ? null : parseActivePlan(value.active);
   // 진행 중인 계획이 깨져 있으면 그것만 버리고 대기 화면의 계획은 살린다.
-  return { plan, active };
-}
-
-/**
- * 세션을 하나만 계획할 수 있던 버전 1의 값을 바꾼다.
- * `{ settings: { goal, focusMinutes, breakMinutes }, active: { goal, focusMinutes, breakMinutes, finished, current } }`
- */
-function parseVersion1(value: Record<string, unknown>): TimerState {
-  const plan = parseSessions([value.settings]);
-  if (!plan) return createInitialState();
-
-  let active: ActivePlan | null = null;
-  if (isRecord(value.active)) {
-    const { goal, focusMinutes, breakMinutes, finished, current } =
-      value.active;
-    active = parseActivePlan({
-      sessions: [{ goal, focusMinutes, breakMinutes }],
-      index: 0,
-      finished,
-      current,
-    });
-  }
   return { plan, active };
 }
 
@@ -132,13 +121,14 @@ function parseSessions(value: unknown): SessionPlan[] | null {
   return sessions;
 }
 
-function isFinishedSession(value: unknown): value is SessionRecord {
+function isFinishedSession(value: unknown): value is EndedSessionRecord {
   return isSession(value) && value.endedAt !== null;
 }
 
 function isSession(value: unknown): value is SessionRecord {
   if (
     !isRecord(value) ||
+    typeof value.id !== "string" ||
     (value.kind !== "focus" && value.kind !== "break") ||
     !isFiniteNumber(value.startedAt) ||
     !isNullableNumber(value.endedAt) ||
@@ -182,13 +172,4 @@ function isIndex(value: unknown, length: number): value is number {
     (value as number) >= 0 &&
     (value as number) < length
   );
-}
-
-/** localStorage에 접근할 수 없는 환경(서버, 차단된 브라우저)이면 null */
-export function getBrowserStorage(): Storage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
 }

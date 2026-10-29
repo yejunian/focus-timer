@@ -1,7 +1,11 @@
 import { untrack } from "svelte";
+import { getDatabase, listenForChanges } from "./database.js";
+import type { HistoryEntry } from "./history.js";
 import {
   completePlan,
+  createInitialState,
   discardPlan,
+  finishFocus,
   getElapsedMs,
   getPlannedMs,
   getStatus,
@@ -11,25 +15,31 @@ import {
   pause,
   removePlannedSession,
   resume,
+  startNextFocus,
   startPlan,
-  switchSession,
   updateNextSession,
   updatePlannedSession,
   type ActivePlan,
+  type FocusEnding,
   type SessionPlan,
   type SessionPlanPatch,
   type TimerState,
   type TimerStatus,
+  type Transition,
 } from "./model.js";
-import { loadState, parseState, saveState, STORAGE_KEY } from "./storage.js";
+import { readTimerState, writeTimerState } from "./storage.js";
 
 /**
  * 타이머 상태를 들고 있는 반응형 객체.
- * 상태가 바뀔 때마다 저장소에 기록하고, 다른 탭에서 바뀐 상태도 받아 온다.
+ * 상태가 바뀔 때마다 IndexedDB에 기록하고, 다른 탭에서 바뀐 상태도 받아 온다.
+ * 세션을 끝내는 전이는 상태와 그 세션의 이력을 한 트랜잭션으로 저장한다.
  */
 export class FocusTimer {
-  #storage: Storage | null;
+  /** null이면 IndexedDB를 쓸 수 없어 이 탭의 메모리에서만 상태를 유지한다. */
+  #db: IDBDatabase | null;
   #state: TimerState;
+  /** 이 탭에서 상태를 바꿀 때마다 늘린다. 저장소에서 읽는 사이에 상태를 바꿨는지 알아낸다. */
+  #revision = 0;
   /** 경과 시간을 계산하는 기준 시각. 세션이 흘러가는 동안에만 주기적으로 갱신한다. */
   #now = $state(Date.now());
 
@@ -40,9 +50,23 @@ export class FocusTimer {
 
   #ticking = $derived(this.active !== null && !this.paused);
 
-  constructor(storage: Storage | null) {
-    this.#storage = storage;
-    this.#state = $state.raw(loadState(storage));
+  /** 저장된 상태를 불러와 타이머를 만든다. */
+  static async load(): Promise<FocusTimer> {
+    const db = await getDatabase();
+    let state = createInitialState();
+    if (db) {
+      try {
+        state = await readTimerState(db);
+      } catch {
+        // 읽지 못하면 초기 상태로 시작한다.
+      }
+    }
+    return new FocusTimer(db, state);
+  }
+
+  private constructor(db: IDBDatabase | null, state: TimerState) {
+    this.#db = db;
+    this.#state = $state.raw(state);
   }
 
   get status(): TimerStatus {
@@ -97,28 +121,33 @@ export class FocusTimer {
   }
 
   start(): void {
-    this.#transition(startPlan);
+    this.#transition((state, now) => startPlan(state, now, createId()));
   }
 
   togglePause(): void {
     this.#transition(this.paused ? resume : pause);
   }
 
-  startBreak(): void {
-    this.#transition((state, now) => switchSession(state, "break", now));
+  /** 집중을 마치고 휴식을 시작한다. 마친 집중은 돌아본 내용과 함께 이력에 남긴다. */
+  finishFocus(ending: FocusEnding): void {
+    this.#endSession((state, now) =>
+      finishFocus(state, ending, now, createId()),
+    );
   }
 
-  /** 휴식을 마치고 다음 세션의 집중을 시작한다. */
+  /** 휴식을 마치고 다음 세션의 집중을 시작한다. 마친 휴식은 이력에 남긴다. */
   startFocus(): void {
-    this.#transition((state, now) => switchSession(state, "focus", now));
+    this.#endSession((state, now) => startNextFocus(state, now, createId()));
   }
 
+  /** 휴식을 마치고 대기 상태로 돌아간다. 마친 휴식은 이력에 남긴다. */
   complete(): void {
-    this.#transition(completePlan);
+    this.#endSession(completePlan);
   }
 
+  /** 진행 중인 계획을 버린다. 진행 중이던 세션은 이력에 남기지 않는다. */
   discard(): void {
-    this.#transition(discardPlan);
+    this.#commit(discardPlan(this.#state));
   }
 
   /**
@@ -126,14 +155,7 @@ export class FocusTimer {
    * @example $effect(() => timer.connect());
    */
   connect(): () => void {
-    const onStorage = (event: StorageEvent) => {
-      // key가 null이면 저장소 전체가 비워진 경우다.
-      if (event.storageArea !== this.#storage) return;
-      if (event.key !== null && event.key !== STORAGE_KEY) return;
-      this.#now = Date.now();
-      this.#state = parseState(event.newValue);
-    };
-    window.addEventListener("storage", onStorage);
+    const stopListening = listenForChanges(() => void this.#reload());
 
     $effect(() => {
       if (!this.#ticking) return;
@@ -157,18 +179,75 @@ export class FocusTimer {
       };
     });
 
-    return () => window.removeEventListener("storage", onStorage);
+    return stopListening;
   }
 
   #transition(update: (state: TimerState, now: number) => TimerState): void {
-    const now = Date.now();
-    this.#now = now;
-    this.#commit(update(this.#state, now));
+    this.#commit(update(this.#state, this.#updateNow()));
   }
 
-  #commit(next: TimerState): void {
+  #endSession(update: (state: TimerState, now: number) => Transition): void {
+    const { state, entry } = update(this.#state, this.#updateNow());
+    this.#commit(state, entry);
+  }
+
+  #updateNow(): number {
+    const now = Date.now();
+    this.#now = now;
+    return now;
+  }
+
+  #commit(next: TimerState, entry: HistoryEntry | null = null): void {
     if (next === this.#state) return;
     this.#state = next;
-    saveState(this.#storage, next);
+    this.#revision += 1;
+    if (!this.#db) return;
+
+    writeTimerState(this.#db, next, entry).catch((error: unknown) => {
+      // 다른 탭에서 이미 끝낸 세션을 이 탭에서 또 끝내면, 같은 id의 이력이 있어 저장이 통째로 거부된다.
+      // 이 탭의 상태가 뒤처져 있던 것이므로 저장된 상태를 다시 읽어 온다.
+      if (error instanceof DOMException && error.name === "ConstraintError") {
+        void this.#reload();
+      }
+      // 그 밖의 실패(용량 초과 등)는 무시하고 이 탭의 메모리에서만 상태를 유지한다.
+    });
   }
+
+  /** 저장된 상태를 다시 읽어 온다. 다른 탭에서 상태를 바꿨을 때 쓴다. */
+  async #reload(): Promise<void> {
+    if (!this.#db) return;
+    const revision = this.#revision;
+    let state: TimerState;
+    try {
+      state = await readTimerState(this.#db);
+    } catch {
+      return;
+    }
+    // 읽는 사이에 이 탭에서 상태를 바꿨으면 읽은 값이 더 오래된 것이므로 버린다.
+    // 이 탭의 저장이 끝나면 다른 탭이 그 값을 다시 읽어 가므로 결국 같아진다.
+    if (revision !== this.#revision) return;
+    this.#now = Date.now();
+    this.#state = state;
+  }
+}
+
+/**
+ * 무작위 UUID(v4)를 만든다.
+ * `crypto.randomUUID()`는 HTTPS나 localhost에서만 쓸 수 있으므로,
+ * 같은 네트워크의 휴대폰에서 http로 개발 서버를 열 때도 동작하도록 직접 만든다.
+ */
+function createId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join("-");
 }
