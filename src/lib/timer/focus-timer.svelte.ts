@@ -4,7 +4,6 @@ import type { HistoryEntry } from "./history.js";
 import {
   completePlan,
   createInitialState,
-  discardPlan,
   finishFocus,
   getElapsedMs,
   getPlannedMs,
@@ -13,6 +12,7 @@ import {
   isPaused,
   movePlannedSession,
   pause,
+  quitPlan,
   removePlannedSession,
   resume,
   startNextFocus,
@@ -140,14 +140,14 @@ export class FocusTimer {
     this.#endSession((state, now) => startNextFocus(state, now, createId()));
   }
 
-  /** 휴식을 마치고 대기 상태로 돌아간다. 마친 휴식은 이력에 남긴다. */
+  /** 마지막 세션의 휴식을 마치고 대기 상태로 돌아간다. 마친 휴식은 이력에 남긴다. */
   complete(): void {
     this.#endSession(completePlan);
   }
 
-  /** 진행 중인 계획을 버린다. 진행 중이던 세션은 이력에 남기지 않는다. */
-  discard(): void {
-    this.#commit(discardPlan(this.#state));
+  /** 그만두고 대기 상태로 돌아간다. 진행 중이던 집중/휴식은 이력에 남기지 않는다. */
+  quit(): void {
+    this.#commit(quitPlan(this.#state));
   }
 
   /**

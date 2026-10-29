@@ -18,8 +18,8 @@
   } from "#lib/timer/model.js";
   import { cn } from "#lib/utils.js";
   import BreakOverview from "./break-overview.svelte";
-  import DiscardSessionDialog from "./discard-session-dialog.svelte";
   import FinishFocusDialog from "./finish-focus-dialog.svelte";
+  import QuitSessionDialog from "./quit-session-dialog.svelte";
   import SessionProgress from "./session-progress.svelte";
 
   interface Props {
@@ -75,7 +75,6 @@
   }
 
   const actionButtonClass = "h-12 min-w-36 px-5 text-base short:h-10";
-  const cornerButtonClass = "text-muted-foreground";
 
   let pauseButton = $state<HTMLElement | null>(null);
   let mainButton = $state<HTMLElement | null>(null);
@@ -89,25 +88,15 @@
   <div
     class="absolute top-3 right-3 sm:top-6 sm:right-6 short:top-2 short:right-2"
   >
-    <!-- 집중 중에는 계획을 버릴 수 있고, 휴식 중에는 남은 세션을 건너뛰고 마칠 수 있다.
-         마지막 휴식에서는 가운데의 "세션 완료" 버튼과 겹치므로 표시하지 않는다. -->
-    {#if isFocus}
-      <DiscardSessionDialog
-        class={cn(
-          cornerButtonClass,
-          "hover:text-destructive dark:hover:text-destructive",
-        )}
-        onConfirm={() => timer.discard()}
+    <!-- 집중과 휴식 중에 계획을 그만둘 수 있다.
+         마지막 휴식에서는 가운데의 "세션 완료" 버튼으로 마치므로 표시하지 않는다. -->
+    {#if isFocus || !isLast}
+      <QuitSessionDialog
+        class="text-muted-foreground hover:text-destructive dark:hover:text-destructive"
+        kind={active.current.kind}
+        hasFinished={active.finished.length > 0}
+        onConfirm={() => timer.quit()}
       />
-    {:else if !isLast}
-      <Button
-        variant="ghost"
-        class={cornerButtonClass}
-        onclick={() => timer.complete()}
-      >
-        <CheckIcon />
-        세션 완료
-      </Button>
     {/if}
   </div>
 

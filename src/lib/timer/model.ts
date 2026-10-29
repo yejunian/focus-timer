@@ -405,13 +405,12 @@ export function updateNextSession(
   return { ...state, active: { ...active, sessions } };
 }
 
-/**
- * 휴식을 끝내고 계획을 마친다. (휴식 → 대기) 끝낸 휴식은 이력에 남긴다.
- * 마지막 세션이 아니면 남은 세션은 진행하지 않는다.
- */
+/** 마지막 세션의 휴식을 끝내고 계획을 마친다. (휴식 → 대기) 끝낸 휴식은 이력에 남긴다. */
 export function completePlan(state: TimerState, now: number): Transition {
   const { active } = state;
-  if (active?.current.kind !== "break") return unchanged(state);
+  if (active?.current.kind !== "break" || !isLastSession(active)) {
+    return unchanged(state);
+  }
   return {
     state: { ...state, active: null },
     entry: createBreakEntry(
@@ -422,9 +421,10 @@ export function completePlan(state: TimerState, now: number): Transition {
 }
 
 /**
- * 진행 중인 계획을 버린다. (집중/휴식 → 대기)
- * 진행 중이던 세션은 이력에 남기지 않는다. 이미 끝낸 세션의 이력은 그대로 남는다.
+ * 진행 중인 계획을 그만둔다. (집중/휴식 → 대기)
+ * 진행 중이던 집중/휴식은 이력에 남기지 않는다. 이미 끝낸 세션의 이력은 그대로 남는다.
  */
-export function discardPlan(state: TimerState): TimerState {
+export function quitPlan(state: TimerState): TimerState {
+  if (!state.active) return state;
   return { ...state, active: null };
 }
