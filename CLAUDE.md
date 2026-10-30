@@ -144,7 +144,7 @@ src/
 
 - 들여쓰기는 공백 2칸이다. Prettier(svelte, tailwindcss 플러그인)가 클래스 순서도 정렬한다.
 - 파일 이름은 kebab-case. 앱 컴포넌트는 `src/lib/components/<기능>/`, 로직은 `src/lib/<기능>/`에 둔다.
-- shadcn-svelte가 생성한 컴포넌트(`ui/`)는 되도록 고치지 않고 props와 class로 조정한다.
+- `src/lib/components/ui/`는 shadcn-svelte CLI가 생성한 그대로 두고 수정하지 않는다(prettier 대상에서도 제외). 모양은 사용하는 쪽에서 조합과 `class`로 맞춘다.
 - 화면 컴포넌트에는 `timer` 객체를 prop으로 넘기고, 컴포넌트는 그 메서드를 호출한다.
 - 끌어서 순서 바꾸기는 라이브러리 없이 Pointer Events로 구현했다 (`plan-list.svelte`).
 - 목표와 한 일 입력값은 받은 그대로 둔다. 바로 trim하거나 자르면 한글 IME 조합이 깨진다. 목표는 그 집중을 시작할 때, 한 일은 이력을 만들 때 trim한다.
@@ -157,8 +157,8 @@ src/
 
 ## shadcn-svelte CLI
 
-- `pnpm exec shadcn-svelte add <컴포넌트> -y`로 추가한 뒤, 탭 들여쓰기를 `pnpm exec prettier --write src/lib/components/ui`로 고친다.
-- 이미 있는 파일과 겹치면 CLI가 대화형으로 멈춘다. `-o`로 덮어쓰고 포매팅한 뒤 `git diff`로 기존 파일이 바뀌지 않았는지 확인한다.
+- `pnpm exec shadcn-svelte add <컴포넌트> -y`로 추가하고 포매팅하지 않는다. 레지스트리 원본과 바로 비교할 수 있게 `ui/`는 CLI가 만든 그대로(탭 들여쓰기) 두고 Prettier에서 제외했다 (`.prettierignore`).
+- 이미 있는 파일과 겹치면 CLI가 대화형으로 멈춘다. `-o`로 덮어쓴 뒤 `git diff`로 기존 파일이 바뀌지 않았는지 확인한다.
 - 작업과 관계없는 의존성 버전이 함께 올라가면 `package.json`, `pnpm-lock.yaml`을 되돌리고 `pnpm install`을 실행한다.
 - dialog의 닫기(X) 버튼은 영어 "Close" 라벨이므로 `showCloseButton={false}`로 끄고 "취소" 버튼을 직접 둔다.
 
