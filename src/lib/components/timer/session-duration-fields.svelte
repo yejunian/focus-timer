@@ -34,7 +34,7 @@
   value={session.breakMinutes}
   min={DURATION_LIMITS.break.min}
   max={DURATION_LIMITS.break.max}
-  step={1}
+  step={5}
   defaultValue={getDefaultBreakMinutes(session.focusMinutes)}
   onValueChange={(breakMinutes) => onChange({ breakMinutes })}
 />
