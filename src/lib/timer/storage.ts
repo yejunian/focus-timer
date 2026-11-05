@@ -21,6 +21,7 @@ import {
   type SessionRecord,
   type TimerState,
 } from "./model.js";
+import { getClientTimeZone } from "./time-zone.js";
 
 /** state 저장소에서 타이머 상태를 두는 키 */
 const TIMER_STATE_KEY = "timer";
@@ -73,22 +74,18 @@ export function parseState(value: unknown): TimerState {
 function parseActivePlan(value: unknown): ActivePlan | null {
   if (!isRecord(value)) return null;
   const sessions = parseSessions(value.sessions);
+  const finished = parseSessionRecords(value.finished);
+  const current = parseSessionRecord(value.current);
   if (
     !sessions ||
     !isIndex(value.index, sessions.length) ||
-    !Array.isArray(value.finished) ||
-    !value.finished.every(isFinishedSession) ||
-    !isSession(value.current) ||
-    value.current.endedAt !== null
+    !finished?.every(isEnded) ||
+    !current ||
+    current.endedAt !== null
   ) {
     return null;
   }
-  return {
-    sessions,
-    index: value.index,
-    finished: value.finished,
-    current: value.current,
-  };
+  return { sessions, index: value.index, finished, current };
 }
 
 /** 세션 계획 목록. 비어 있거나 하나라도 깨져 있으면 null */
@@ -121,11 +118,19 @@ function parseSessions(value: unknown): SessionPlan[] | null {
   return sessions;
 }
 
-function isFinishedSession(value: unknown): value is EndedSessionRecord {
-  return isSession(value) && value.endedAt !== null;
+/** 집중/휴식 세션 기록 목록. 하나라도 깨져 있으면 null */
+function parseSessionRecords(value: unknown): SessionRecord[] | null {
+  if (!Array.isArray(value)) return null;
+  const records = value.map(parseSessionRecord);
+  return records.every((record) => record !== null) ? records : null;
 }
 
-function isSession(value: unknown): value is SessionRecord {
+/**
+ * 집중/휴식 세션 기록. 깨져 있으면 null
+ * 시간대가 없으면(시간대를 기록하기 전의 값) 불러오는 지금 이 브라우저의 시간대로 채운다.
+ * 시간대가 문자열이면 이 브라우저가 모르는 이름이어도 그대로 둔다.
+ */
+function parseSessionRecord(value: unknown): SessionRecord | null {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
@@ -135,11 +140,27 @@ function isSession(value: unknown): value is SessionRecord {
     !Array.isArray(value.pauses) ||
     !value.pauses.every(isPause)
   ) {
-    return false;
+    return null;
   }
   // 열린 일시정지는 마지막 하나만 허용한다.
   const openIndex = value.pauses.findIndex((pause) => pause.endedAt === null);
-  return openIndex === -1 || openIndex === value.pauses.length - 1;
+  if (openIndex !== -1 && openIndex !== value.pauses.length - 1) return null;
+
+  return {
+    // 다른 버전의 앱이 더한 필드도 지우지 않고 남긴다.
+    ...value,
+    id: value.id,
+    kind: value.kind,
+    startedAt: value.startedAt,
+    endedAt: value.endedAt,
+    pauses: value.pauses,
+    timeZone:
+      typeof value.timeZone === "string" ? value.timeZone : getClientTimeZone(),
+  };
+}
+
+function isEnded(record: SessionRecord): record is EndedSessionRecord {
+  return record.endedAt !== null;
 }
 
 function isPause(value: unknown): value is PauseRecord {

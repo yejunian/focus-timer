@@ -23,11 +23,13 @@ import {
   type FocusEnding,
   type SessionPlan,
   type SessionPlanPatch,
+  type SessionStart,
   type TimerState,
   type TimerStatus,
   type Transition,
 } from "./model.js";
 import { readTimerState, writeTimerState } from "./storage.js";
+import { getClientTimeZone } from "./time-zone.js";
 
 /**
  * 타이머 상태를 들고 있는 반응형 객체.
@@ -121,7 +123,9 @@ export class FocusTimer {
   }
 
   start(): void {
-    this.#transition((state, now) => startPlan(state, now, createId()));
+    this.#transition((state, now) =>
+      startPlan(state, now, createSessionStart()),
+    );
   }
 
   togglePause(): void {
@@ -131,13 +135,15 @@ export class FocusTimer {
   /** 집중을 마치고 휴식을 시작한다. 마친 집중은 돌아본 내용과 함께 이력에 남긴다. */
   finishFocus(ending: FocusEnding): void {
     this.#endSession((state, now) =>
-      finishFocus(state, ending, now, createId()),
+      finishFocus(state, ending, now, createSessionStart()),
     );
   }
 
   /** 휴식을 마치고 다음 세션의 집중을 시작한다. 마친 휴식은 이력에 남긴다. */
   startFocus(): void {
-    this.#endSession((state, now) => startNextFocus(state, now, createId()));
+    this.#endSession((state, now) =>
+      startNextFocus(state, now, createSessionStart()),
+    );
   }
 
   /** 마지막 세션의 휴식을 마치고 대기 상태로 돌아간다. 마친 휴식은 이력에 남긴다. */
@@ -229,6 +235,14 @@ export class FocusTimer {
     this.#now = Date.now();
     this.#state = state;
   }
+}
+
+/** 지금 시작하는 세션의 id와, 이 브라우저의 지금 시간대 */
+function createSessionStart(): SessionStart {
+  return {
+    id: createId(),
+    timeZone: getClientTimeZone(),
+  };
 }
 
 /**
