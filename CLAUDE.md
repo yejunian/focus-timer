@@ -12,7 +12,7 @@
 - 모바일, 태블릿, 데스크톱, 높이가 낮은 가로 화면에 모두 대응한다.
 - UI 문구, 코드 주석, 커밋 메시지는 한국어로 쓴다.
 
-현재 상태 (2026-10-30): 여러 세션 계획, 이력 저장(IndexedDB), 집중 마무리 창, 그만두기까지 `main`에 머지했다. 다음 목표는 이 이력으로 통계 페이지를 만드는 것이다.
+현재 상태 (2026-11-05): 여러 세션 계획, 이력 저장(IndexedDB), 집중 마무리 창, 그만두기까지 `main`에 머지했다. 지금은 `feature/statistics` 브랜치에서 이 이력으로 통계 페이지를 만들고 있으며, 먼저 이력에 시간대를 더했다.
 
 **데이터 호환성**: 배포 워크플로(GitHub Actions)를 작성하기 전까지는 저장 구조를 바꿔도 마이그레이션하지 않는다. 작성한 뒤에는 마이그레이션이 필요 없게 설계하고, 꼭 필요하면 "저장"의 규칙대로 데이터베이스 버전을 올린다.
 
@@ -56,6 +56,7 @@ src/
       database.ts             # IndexedDB 열기/업그레이드, 탭 간 변경 알림
       storage.ts              # 타이머 상태 저장/불러오기/검증
       format.ts               # m:ss, 스크린 리더용 "12분 3초"
+      time-zone.ts            # 클라이언트 시간대, 표시용 시간대
       focus-timer.svelte.ts   # 반응형 상태 클래스 FocusTimer
     components/
       timer/                  # 앱 컴포넌트 (대기 idle-view, 집중·휴식 session-view 등)
@@ -70,6 +71,7 @@ src/
   - 끝난 집중/휴식은 `active.finished`에 시간순으로 쌓고, 진행 중인 것은 `active.current`에 둔다.
 - 계획한 세션의 `id`는 목록 안에서만 겹치지 않는 정수다. `SessionRecord`의 `id`는 UUID이고 이력에도 그대로 남는다. `crypto.randomUUID()`는 http로 연 개발 서버에서 쓸 수 없어 `getRandomValues`로 만든다.
 - 시각은 `Date.now()` 밀리초로 기록하고, 진행 시간은 `(endedAt ?? now) - startedAt - 일시정지 합`으로 계산한다. 그래서 새로고침해도 같다.
+- `SessionRecord`는 시작할 때 클라이언트의 IANA 시간대 이름(`timeZone`)을 기록한다. 이력은 세션을 끝낼 때 만들므로, 시작 시점의 시간대를 남기려면 진행 중인 기록에 있어야 한다. 새 세션의 id와 시간대는 `SessionStart`로 묶어 전이 함수에 넘긴다.
 - 전이 함수는 순수 함수이고, 할 수 없는 전이는 같은 객체를 돌려준다. 집중/휴식을 끝내는 전이(`finishFocus`, `startNextFocus`, `completePlan`)는 `{ state, entry }`를 돌려준다. `quitPlan`은 진행 중인 것을 이력에 남기지 않는다.
 - `finishFocus`는 마무리 창에서 저장한 때에 집중을 끝내고(열린 일시정지도 닫음) 바로 휴식을 시작한다. 넘겨받은 `sessionId`가 지금 집중과 다르면 무시한다.
 - 상수: 집중 5–300분, 휴식 1–120분, 기본 집중 25분·휴식 5분, 목표 최대 100자.
@@ -89,6 +91,7 @@ src/
 - IndexedDB를 쓸 수 없으면 `getDatabase()`가 `null`이고 메모리에서만 유지한다.
 - 저장이 끝나면 BroadcastChannel(`focus-timer`)로 알린다. 다른 버전의 탭이 보낸 것일 수 있으므로 메시지 내용은 보지 않고 다시 읽기만 한다.
 - 불러올 때 `parseState`로 모양을 검사해, 깨진 `active`는 버리더라도 `plan`은 되도록 살린다.
+  - 세션 기록에 `timeZone` 문자열이 없으면 버리지 않고 불러오는 때의 시간대로 채운다. 문자열이면 브라우저가 모르는 이름이어도 그대로 둔다.
 - **스키마를 바꿀 때** (배포 뒤)
   - `DATABASE_VERSION`을 올리고 `upgrade()`에 새 단계를 덧붙인다. 이미 배포한 단계는 고치지 않는다.
   - 다른 탭에서 버전을 올리면 열린 연결은 `versionchange`를 받아 닫고 새로고침한다. 첫 배포부터 있어야 하는 처리이므로 지우지 않는다.
@@ -97,7 +100,10 @@ src/
 ## 이력 (`src/lib/timer/history.ts`)
 
 - 집중/휴식을 끝낼 때마다 `HistoryEntry` 하나를 남기고, 저장한 이력은 고치지 않는다.
-- 공통 필드: `id`(세션 id), `kind`, `startedAt`, `endedAt`(밀리초), `plannedMinutes`(설정한 시간).
+- 공통 필드: `id`(세션 id), `kind`, `startedAt`, `endedAt`(밀리초), `timeZone`(시작할 때의 IANA 시간대 이름), `plannedMinutes`(설정한 시간).
+- 현지 시각은 세션마다 `timeZone`으로 계산한다. 그래야 사용자의 시간대가 바뀐 뒤에도 진행 당시의 시각으로 보인다. 세션 도중에 시간대가 바뀌어도 시작할 때의 시간대를 쓴다.
+  - UTC 오프셋이 아닌 IANA 이름을 저장하므로 서머타임 경계를 지나는 세션도 올바르게 계산된다.
+  - 기록한 브라우저가 알려 준 이름 그대로라서, 읽는 브라우저가 모르는 이름일 수 있다(`Intl`에 넘기면 `RangeError`). 저장된 값은 바꾸지 않고, 표시할 때만 `getDisplayTimeZone`으로 클라이언트 시간대를 대신 쓴다.
 - 집중에만 있는 필드: `pauses`(닫힌 일시정지 구간), `goal`(trim, 없으면 `""`), `outcome`(한 일, trim 후 500자로 자름, 없으면 `""`), `concentration`(집중도 1–5 정수, 필수).
 - 필드를 지우거나 이름, 뜻, 단위를 바꾸지 않는다. 새 필드를 더하면 읽는 쪽에서 예전 이력에 그 필드가 없는 경우를 처리한다.
 - 진행 시간은 저장하지 않고 `endedAt - startedAt - 일시정지 합`으로 계산한다.
