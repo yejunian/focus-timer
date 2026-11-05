@@ -144,15 +144,28 @@ export function isPaused(session: SessionRecord): boolean {
   return session.pauses.at(-1)?.endedAt === null;
 }
 
-/** 일시정지한 시간을 뺀 실제 진행 시간 */
-export function getElapsedMs(session: SessionRecord, now: number): number {
+/** 세션 시간 기록. 진행 중인 세션과 끝난 집중 세션의 이력이 모두 이 모양이다. */
+interface TimedSession {
+  startedAt: number;
+  endedAt: number | null;
+  pauses: readonly PauseRecord[];
+}
+
+/** 일시정지한 시간의 합. 세션이 끝난 뒤로 넘어간 부분은 세지 않는다. */
+export function getPausedMs(session: TimedSession, now: number): number {
   const end = session.endedAt ?? now;
   let pausedMs = 0;
   for (const pause of session.pauses) {
     const pauseEnd = Math.min(pause.endedAt ?? end, end);
     pausedMs += Math.max(0, pauseEnd - pause.startedAt);
   }
-  return Math.max(0, end - session.startedAt - pausedMs);
+  return pausedMs;
+}
+
+/** 일시정지한 시간을 뺀 실제 진행 시간 */
+export function getElapsedMs(session: TimedSession, now: number): number {
+  const end = session.endedAt ?? now;
+  return Math.max(0, end - session.startedAt - getPausedMs(session, now));
 }
 
 /** 지금 진행 중인 세션의 계획 */
