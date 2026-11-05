@@ -204,7 +204,7 @@ export class HistoryViewer {
   }
 
   /**
-   * 하루 시작 시각을 바꾼다. 화면은 바로 바꾸고 저장은 기다리지 않는다.
+   * 날짜 구분 시각을 바꾼다. 화면은 바로 바꾸고 저장은 기다리지 않는다.
    * 오늘이 바뀔 수 있으므로, 오늘이나 최근 4주를 보고 있었으면 새 오늘을 따라간다.
    */
   setDayStartHour(hour: number): void {
@@ -220,7 +220,7 @@ export class HistoryViewer {
       writeSettings(this.#db, this.#settings).catch(() => {});
     }
 
-    // 읽어 둔 이력은 하루 시작 시각과 관계없이 넉넉한 범위라서 바로 다시 나눌 수 있다.
+    // 읽어 둔 이력은 날짜 구분 시각과 관계없이 넉넉한 범위라서 바로 다시 나눌 수 있다.
     // 사용자가 조작한 때이므로 새 이력도 다시 읽어 온다.
     this.#updateToday();
     void this.showDay(followDay ? this.#today : this.#targetDay);

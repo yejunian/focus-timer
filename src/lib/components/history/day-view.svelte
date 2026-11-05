@@ -28,7 +28,7 @@
   // 열 너비는 고정해 두어 행마다 내용이 달라도 열이 흔들리지 않게 한다.
   // 목표와 한 일은 넓은 화면에서만 "세션" 열 너비만큼 들여쓴다.
   const sessionColumnClass = "w-22 shrink-0";
-  const detailsIndentClass = "sm:pl-22";
+  const detailsIndentClass = "sm:pl-42";
   const concentrationColumnClass = "w-20 shrink-0";
 </script>
 
@@ -69,14 +69,14 @@
 
   {#if rows.length === 0}
     <p class="py-10 text-center text-muted-foreground">
-      이 날의 기록이 없습니다.
+      이날은 기록이 없습니다.
     </p>
   {:else}
     <div role="table" aria-labelledby="day-view-title" class="text-sm">
       <div role="row" class={cn("flex border-b pb-2", headerRowClass)}>
         <div role="columnheader" class={sessionColumnClass}>세션</div>
         <div role="columnheader" class={concentrationColumnClass}>집중도</div>
-        <div role="columnheader" class="min-w-0 flex-1">진행/목표</div>
+        <div role="columnheader" class="min-w-0 flex-1">진행 시간 / 목표 시간</div>
       </div>
       {#each rows as row (row.id)}
         <!-- 목표와 한 일은 같은 행의 마지막 칸으로 두고, 줄을 바꿔 아래에 놓는다. -->
@@ -140,7 +140,7 @@
             <div role="cell" class={cn("mt-2 basis-full", detailsIndentClass)}>
               <dl class="flex flex-col gap-1 wrap-break-word break-keep">
                 {#if row.goal}
-                  <div class="flex items-baseline gap-3">
+                  <div class="flex items-baseline gap-2">
                     <dt class="w-8 shrink-0 text-xs text-muted-foreground">
                       목표
                     </dt>
@@ -148,9 +148,9 @@
                   </div>
                 {/if}
                 {#if row.outcome}
-                  <div class="flex items-baseline gap-3">
+                  <div class="flex items-baseline gap-2">
                     <dt class="w-8 shrink-0 text-xs text-muted-foreground">
-                      한 일
+                      결과
                     </dt>
                     <dd class="min-w-0 flex-1 whitespace-pre-line">
                       {row.outcome}

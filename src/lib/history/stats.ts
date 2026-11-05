@@ -1,5 +1,5 @@
 // 기록 페이지에 보여 줄 일간 목록과 주간 통계를 이력에서 계산한다.
-// 이력은 `localizeEntry`로 현지 시각을 붙여 둔 것을 받고, 날짜는 하루 시작 시각을 적용해 정한다.
+// 이력은 `localizeEntry`로 현지 시각을 붙여 둔 것을 받고, 날짜는 날짜 구분 시각을 적용해 정한다.
 
 import type { Concentration, HistoryEntry } from "#lib/timer/history.js";
 import { getElapsedMs, getPausedMs } from "#lib/timer/model.js";

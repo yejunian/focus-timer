@@ -19,12 +19,12 @@
   class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
 >
   <div class="flex flex-col gap-1.5">
-    <Label for="day-start-hour">하루 시작 시각</Label>
+    <Label for="day-start-hour">날짜 구분 시각</Label>
     <p
       id="day-start-hour-description"
       class="text-sm break-keep text-muted-foreground"
     >
-      이 시각 전에 시작한 세션은 전날 기록에 넣습니다.
+      {formatHour(value)} 기준으로 날짜를 구분합니다.
     </p>
   </div>
   <Select.Root

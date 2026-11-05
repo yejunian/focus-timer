@@ -4,7 +4,7 @@
 // UTC 기준의 Date 산술로 더하고 빼고 요일을 구한다.
 //
 // 세션은 시작 시각을 그 세션의 시간대로 바꾼 현지 날짜에 통째로 넣는다.
-// 하루 시작 시각(`dayStartHour`)보다 이른 시(hour)에 시작한 세션은 전날로 센다.
+// 날짜 구분 시각(`dayStartHour`)보다 이른 시(hour)에 시작한 세션은 전날로 센다.
 
 import type { HistoryEntry } from "#lib/timer/history.js";
 import { getClientTimeZone, getDisplayTimeZone } from "#lib/timer/time-zone.js";
@@ -26,7 +26,7 @@ export interface LocalTime {
   minute: number;
 }
 
-/** 시작 시각을 현지 시각으로 바꿔 둔 이력. 하루 시작 시각을 바꿔도 다시 계산하지 않는다. */
+/** 시작 시각을 현지 시각으로 바꿔 둔 이력. 날짜 구분 시각을 바꿔도 다시 계산하지 않는다. */
 export interface LocalizedEntry {
   entry: HistoryEntry;
   start: LocalTime;
@@ -71,7 +71,7 @@ export function localizeEntry(entry: HistoryEntry): LocalizedEntry {
   return { entry, start: getLocalTime(entry.startedAt, entry.timeZone) };
 }
 
-/** 하루 시작 시각을 적용한 날짜. 그 시각보다 이르면 전날이다. */
+/** 날짜 구분 시각을 적용한 날짜. 그 시각보다 이르면 전날이다. */
 export function getLogicalDay(
   time: LocalTime,
   dayStartHour: number,
@@ -114,8 +114,8 @@ export function getWeekStart(day: DayNumber): DayNumber {
 
 /**
  * `first`부터 `last`까지의 날짜에 들 수 있는 이력의 시작 시각 범위 `[startMs, endMs)`.
- * 현지 날짜는 UTC 날짜보다 최대 14시간 빠르거나 12시간 늦고, 하루 시작 시각만큼 더 늦어질 수 있다(최대 6시간).
- * 앞뒤로 하루씩 넉넉히 읽으므로 하루 시작 시각이 바뀌어도 이 범위를 다시 읽지 않아도 된다.
+ * 현지 날짜는 UTC 날짜보다 최대 14시간 빠르거나 12시간 늦고, 날짜 구분 시각만큼 더 늦어질 수 있다(최대 6시간).
+ * 앞뒤로 하루씩 넉넉히 읽으므로 날짜 구분 시각이 바뀌어도 이 범위를 다시 읽지 않아도 된다.
  * 읽은 이력은 `getLogicalDay`로 다시 걸러야 한다.
  */
 export function getQueryRange(

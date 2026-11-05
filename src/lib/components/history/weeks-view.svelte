@@ -63,7 +63,7 @@
     >
       {title}
     </h2>
-    <div class="flex shrink-0 items-center gap-1">
+    <div class="flex shrink-0 items-center gap-1 self-end">
       <Button
         variant="outline"
         size="icon"
@@ -74,7 +74,7 @@
       </Button>
       <!-- 이미 최근 4주여도 누르면 기록을 다시 읽는다. -->
       <Button variant="outline" onclick={() => viewer.showLatestWeeks()}>
-        이번 주
+        최근
       </Button>
       <Button
         variant="outline"
@@ -130,7 +130,7 @@
             <span aria-hidden="true">{formatWeekPeriod(week.start)}</span>
             <span class="sr-only">{formatSpokenWeekPeriod(week.start)}</span>
           </div>
-          <div role="cell" class={cn(totalColumnClass, "font-medium")}>
+          <div role="cell" class={cn(totalColumnClass, "font-semibold")}>
             {#if week.hasEntries}
               <span aria-hidden="true">{formatHoursMinutes(week.focusMs)}</span>
               <span class="sr-only">

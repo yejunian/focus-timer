@@ -12,13 +12,13 @@ import {
 
 const SETTINGS_KEY = "settings";
 
-/** 고를 수 있는 하루 시작 시각 (자정부터 오전 6시까지) */
+/** 고를 수 있는 날짜 구분 시각 (자정부터 오전 6시까지) */
 export const DAY_START_HOURS: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
 
 export const DEFAULT_DAY_START_HOUR = 4;
 
 export interface Settings {
-  /** 하루 시작 시각(시). 이 시각보다 이르게 시작한 세션은 전날 기록으로 센다. */
+  /** 날짜 구분 시각(시). 이 시각보다 이르게 시작한 세션은 전날 기록으로 센다. */
   dayStartHour: number;
 }
 
