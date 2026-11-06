@@ -26,7 +26,8 @@
   const rows = $derived(viewer.dayRows);
 
   // 열 너비는 고정해 두어 행마다 내용이 달라도 열이 흔들리지 않게 한다.
-  // 목표와 한 일은 넓은 화면에서만 "세션" 열 너비만큼 들여쓴다.
+  // 목표와 결과는 넓은 화면에서만 "세션"과 "집중도" 열 너비를 더한 만큼(22 + 20) 들여써
+  // "진행 시간 / 목표 시간" 열에 맞춘다.
   const sessionColumnClass = "w-22 shrink-0";
   const detailsIndentClass = "sm:pl-42";
   const concentrationColumnClass = "w-20 shrink-0";
