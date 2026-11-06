@@ -34,6 +34,13 @@ interface HistoryEntryBase {
   startedAt: number;
   /** 세션을 끝낸 시각 (Unix epoch 밀리초) */
   endedAt: number;
+  /**
+   * 세션을 시작할 때 클라이언트의 IANA 시간대 이름 (예: "Asia/Seoul").
+   * 시작, 종료, 일시정지 시각을 진행 당시의 현지 시각으로 나타낼 때 모두 이 시간대를 쓴다.
+   * 기록한 브라우저가 알려 준 이름 그대로이므로, 읽는 브라우저가 모르는 이름일 수도 있다.
+   * 그때도 이 값은 바꾸지 않고, 표시할 때만 `getDisplayTimeZone`으로 읽는 브라우저의 시간대를 쓴다.
+   */
+  timeZone: string;
   /** 원래 목표로 정한 시간(분) */
   plannedMinutes: number;
 }
@@ -70,6 +77,7 @@ export function createFocusEntry(
     kind: "focus",
     startedAt: record.startedAt,
     endedAt: record.endedAt,
+    timeZone: record.timeZone,
     plannedMinutes: plan.focusMinutes,
     pauses: record.pauses.map((pause) => ({
       startedAt: pause.startedAt,
@@ -91,6 +99,7 @@ export function createBreakEntry(
     kind: "break",
     startedAt: record.startedAt,
     endedAt: record.endedAt,
+    timeZone: record.timeZone,
     plannedMinutes: plan.breakMinutes,
   };
 }

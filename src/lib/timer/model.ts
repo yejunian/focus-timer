@@ -2,7 +2,8 @@
 // 모든 함수는 순수 함수이며 원본을 바꾸지 않고 새 객체를 돌려준다.
 // 시간은 모두 Unix epoch 밀리초(Date.now())로 기록한다. 그래야 브라우저를 다시 열어도
 // 저장된 시각만으로 경과 시간을 다시 계산할 수 있다.
-// 지금 시각과 새 세션의 id처럼 바깥에서 정하는 값은 인자로 받는다.
+// 진행 당시의 현지 시각은 세션을 시작할 때 기록한 시간대(`timeZone`)로 계산한다.
+// 지금 시각, 새 세션의 id와 시간대처럼 바깥에서 정하는 값은 인자로 받는다.
 
 import {
   createBreakEntry,
@@ -32,6 +33,17 @@ export interface SessionRecord {
   /** 아직 진행 중이면 null */
   endedAt: number | null;
   pauses: PauseRecord[];
+  /**
+   * 세션을 시작할 때 클라이언트의 IANA 시간대 이름 (예: "Asia/Seoul").
+   * 세션 도중에 시간대가 바뀌어도 이 값을 기준으로 현지 시각을 계산한다.
+   */
+  timeZone: string;
+}
+
+/** 새 집중/휴식 세션을 시작할 때 바깥에서 정하는 값 */
+export interface SessionStart {
+  id: string;
+  timeZone: string;
 }
 
 /** 끝난 세션의 기록. 일시정지도 모두 닫혀 있다. */
@@ -132,15 +144,28 @@ export function isPaused(session: SessionRecord): boolean {
   return session.pauses.at(-1)?.endedAt === null;
 }
 
-/** 일시정지한 시간을 뺀 실제 진행 시간 */
-export function getElapsedMs(session: SessionRecord, now: number): number {
+/** 세션 시간 기록. 진행 중인 세션과 끝난 집중 세션의 이력이 모두 이 모양이다. */
+interface TimedSession {
+  startedAt: number;
+  endedAt: number | null;
+  pauses: readonly PauseRecord[];
+}
+
+/** 일시정지한 시간의 합. 세션이 끝난 뒤로 넘어간 부분은 세지 않는다. */
+export function getPausedMs(session: TimedSession, now: number): number {
   const end = session.endedAt ?? now;
   let pausedMs = 0;
   for (const pause of session.pauses) {
     const pauseEnd = Math.min(pause.endedAt ?? end, end);
     pausedMs += Math.max(0, pauseEnd - pause.startedAt);
   }
-  return Math.max(0, end - session.startedAt - pausedMs);
+  return pausedMs;
+}
+
+/** 일시정지한 시간을 뺀 실제 진행 시간 */
+export function getElapsedMs(session: TimedSession, now: number): number {
+  const end = session.endedAt ?? now;
+  return Math.max(0, end - session.startedAt - getPausedMs(session, now));
 }
 
 /** 지금 진행 중인 세션의 계획 */
@@ -177,9 +202,16 @@ export function getLastFocusRecord(
 function createSession(
   kind: SessionKind,
   now: number,
-  id: string,
+  start: SessionStart,
 ): SessionRecord {
-  return { id, kind, startedAt: now, endedAt: null, pauses: [] };
+  return {
+    id: start.id,
+    kind,
+    startedAt: now,
+    endedAt: null,
+    pauses: [],
+    timeZone: start.timeZone,
+  };
 }
 
 function closePause(session: SessionRecord, now: number): SessionRecord {
@@ -295,7 +327,7 @@ export function movePlannedSession(
 export function startPlan(
   state: TimerState,
   now: number,
-  focusId: string,
+  focus: SessionStart,
 ): TimerState {
   if (state.active) return state;
   return {
@@ -304,7 +336,7 @@ export function startPlan(
       sessions: state.plan.map(normalizeSession),
       index: 0,
       finished: [],
-      current: createSession("focus", now, focusId),
+      current: createSession("focus", now, focus),
     },
   };
 }
@@ -334,7 +366,7 @@ export function finishFocus(
   state: TimerState,
   ending: FocusEnding,
   now: number,
-  breakId: string,
+  breakStart: SessionStart,
 ): Transition {
   const { active } = state;
   if (
@@ -352,7 +384,7 @@ export function finishFocus(
       active: {
         ...active,
         finished: [...active.finished, ended],
-        current: createSession("break", now, breakId),
+        current: createSession("break", now, breakStart),
       },
     },
     entry: createFocusEntry(getCurrentSession(active), ended, ending.review),
@@ -363,7 +395,7 @@ export function finishFocus(
 export function startNextFocus(
   state: TimerState,
   now: number,
-  focusId: string,
+  focus: SessionStart,
 ): Transition {
   const { active } = state;
   if (active?.current.kind !== "break" || isLastSession(active)) {
@@ -382,7 +414,7 @@ export function startNextFocus(
         ),
         index,
         finished: [...active.finished, ended],
-        current: createSession("focus", now, focusId),
+        current: createSession("focus", now, focus),
       },
     },
     entry: createBreakEntry(getCurrentSession(active), ended),

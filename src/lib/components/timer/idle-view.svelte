@@ -1,6 +1,8 @@
 <script lang="ts">
   import PlayIcon from "@lucide/svelte/icons/play";
+  import RotateCcwClockIcon from "@lucide/svelte/icons/rotate-ccw-clock";
   import { onMount } from "svelte";
+  import { resolve } from "$app/paths";
   import { Button } from "#lib/components/ui/button/index.js";
   import type { FocusTimer } from "#lib/timer/focus-timer.svelte.js";
   import PlanList from "./plan-list.svelte";
@@ -39,8 +41,21 @@
 </script>
 
 <main
-  class="flex min-h-dvh items-center justify-center px-6 py-10 short:items-start short:py-6"
+  class="relative flex min-h-dvh items-center justify-center px-6 py-10 short:items-start short:py-6"
 >
+  <div
+    class="absolute top-3 right-3 sm:top-6 sm:right-6 short:top-2 short:right-2"
+  >
+    <Button
+      variant="ghost"
+      href={resolve("/history")}
+      class="text-muted-foreground"
+    >
+      <RotateCcwClockIcon />
+      기록
+    </Button>
+  </div>
+
   <form
     class="flex w-full max-w-md flex-col gap-6 short:gap-4"
     onsubmit={handleSubmit}
