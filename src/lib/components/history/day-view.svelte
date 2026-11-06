@@ -76,7 +76,9 @@
       <div role="row" class={cn("flex border-b pb-2", headerRowClass)}>
         <div role="columnheader" class={sessionColumnClass}>세션</div>
         <div role="columnheader" class={concentrationColumnClass}>집중도</div>
-        <div role="columnheader" class="min-w-0 flex-1">진행 시간 / 목표 시간</div>
+        <div role="columnheader" class="min-w-0 flex-1">
+          진행 시간 / 목표 시간
+        </div>
       </div>
       {#each rows as row (row.id)}
         <!-- 목표와 한 일은 같은 행의 마지막 칸으로 두고, 줄을 바꿔 아래에 놓는다. -->
